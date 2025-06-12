@@ -46,7 +46,8 @@ class Game {
     this.board = initialState.map((row, rowIndex) => {
       return row.map((cell, colIndex) => {
         return {
-          value: cell,
+          initial: cell,
+          value: 0,
           row: rowIndex,
           col: colIndex,
           cell: null,
@@ -70,13 +71,16 @@ class Game {
               this.board[rowIndex][colIndex].cell.classList.add(
                 `field-cell--${newValue}`,
               );
-              // console.log(`changing ${rowIndex} ${colIndex} to ${newValue}`);
 
               return this.board;
             });
           },
         };
       });
+    });
+
+    this.board.flat(Infinity).forEach((cell) => {
+      cell.setValue(cell.initial);
     });
 
     for (let i = 0; i < this.board.length; i++) {
@@ -178,7 +182,9 @@ class Game {
       this.switchState(Game.states.playing);
     }
   }
-  afterMove() {
+  async afterMove() {
+    await this.cellsPromise;
+
     if (
       this.board.flat(Infinity).some((cell) => {
         return cell.value === 2048;
@@ -187,9 +193,62 @@ class Game {
       this.switchState(Game.states.win);
     }
 
-    if (!this.addNumber()) {
-      this.switchState(Game.states.lose);
+    this.addNumber();
+
+    this.checkLose().then((isLost) => {
+      if (isLost) {
+        this.switchState(Game.states.lose);
+      }
+    });
+  }
+  async checkLose() {
+    await this.cellsPromise;
+
+    if (
+      this.board.flat(Infinity).find((cell) => {
+        return cell.value === 0;
+      })
+    ) {
+      return false;
     }
+
+    if (this.checkMoveAvailable(true)) {
+      return false;
+    }
+
+    if (this.checkMoveAvailable(false)) {
+      return false;
+    }
+
+    return true;
+  }
+  checkMoveAvailable(isHorizontal) {
+    let board = this.board;
+
+    if (!isHorizontal) {
+      board = this.boardTransposed;
+    }
+
+    for (let i = 0; i < board.length; i++) {
+      const filteredRow = board[i].filter((cell) => {
+        return cell.value !== 0;
+      });
+
+      if (filteredRow.length < board[i].length) {
+        return true;
+      }
+
+      for (let j = 0; j < board[i].length; j++) {
+        if (
+          j < filteredRow.length - 1 &&
+          filteredRow[j + 1].value === filteredRow[j].value
+        ) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   /**
@@ -251,8 +310,6 @@ class Game {
    */
   switchState(newState) {
     if (!Object.keys(Game.states).includes(newState)) {
-      // console.log(`Can't switch state to ${newState}`);
-
       return;
     }
 
@@ -285,7 +342,7 @@ class Game {
     switch (newState) {
       case Game.states.idle:
         this.board.flat(Infinity).forEach((cell) => {
-          cell.setValue(0);
+          cell.setValue(cell.initial);
         });
         document.querySelector('.game-score').innerHTML = 0;
 
@@ -309,10 +366,16 @@ class Game {
         this.state = Game.states.playing;
         break;
       case Game.states.win:
+        document
+          .querySelector('.restart')
+          .addEventListener('click', this.boundRestart);
         document.querySelector('.message-win').classList.remove('hidden');
         this.state = Game.states.win;
         break;
       case Game.states.lose:
+        document
+          .querySelector('.restart')
+          .addEventListener('click', this.boundRestart);
         document.querySelector('.message-lose').classList.remove('hidden');
         this.state = Game.states.lose;
         break;
@@ -332,11 +395,7 @@ class Game {
       return cell.value === 0;
     });
 
-    // console.log(availableCells);
-
     if (availableCells.length === 0) {
-      // console.log(`Can't add more numbers to the board`);
-
       return false;
     }
 
